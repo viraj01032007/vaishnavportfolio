@@ -1,7 +1,7 @@
 import React, {useEffect, useState} from 'react';
 import {DEFAULT, LABELS} from './content.js';
 import {deep, getP, setP, sha256} from './lib.jsx';
-import {db, assets} from './store.js';
+import {db, assets, enquiries, adminAuth, usingFirebase} from './store.js';
 
 const isMedia = k => ["img", "portrait", "video"].includes(k);
 const pth = s => s.split(".").map(x => /^\d+$/.test(x) ? +x : x);
@@ -9,7 +9,7 @@ const pth = s => s.split(".").map(x => /^\d+$/.test(x) ? +x : x);
 export function Login({auth, onOk}) {
   const [stage, setStage] = useState(1); const [err, setErr] = useState("");
   const sub = async e => { e.preventDefault(); const v = String(new FormData(e.target).get("v")).trim(); const h = await sha256(v); setErr("");
-    if (stage === 1) { h === auth.passwordHash ? setStage(2) : setErr("Wrong password.") } else { h === auth.pinHash ? onOk() : setErr("Wrong PIN.") } };
+    if (stage === 1) { (await adminAuth.signIn(v, () => h === auth.passwordHash)) ? setStage(2) : setErr("Wrong password.") } else { h === auth.pinHash ? onOk() : setErr("Wrong PIN.") } };
   return <div className="wrap admin"><span className="mono">Vaishnav Dhole</span><h1 className="ah">Admin sign-in</h1>
     <form className="login" onSubmit={sub} key={stage}><span className="mono" style={{color: "var(--accent)"}}>Step {stage} of 2</span>
       <label htmlFor="v">{stage === 1 ? "Password" : "Security PIN"}</label>
@@ -40,16 +40,17 @@ function Fields({obj, path, draft, onChange, onUpload, onClear, onDel, onAdd}) {
 export function Admin({content, onSaved}) {
   const [draft, setDraft] = useState(() => deep(content)); const [dirty, setDirty] = useState(false); const [msg, setMsg] = useState(""); const [ver, setVer] = useState(0);
   const [pw, setPw] = useState(""); const [pin, setPin] = useState(""); const [enq, setEnq] = useState([]);
-  useEffect(() => { const load = () => { const rows = []; db.list("enquiries/").forEach(d => (d?.items || []).forEach(it => rows.push(it))); rows.sort((a, b) => b.at.localeCompare(a.at)); setEnq(rows) }; load() }, []);
+  useEffect(() => { enquiries.list().then(setEnq).catch(e => { console.error(e); setMsg("Could not load enquiries.") }) }, []);
   const mut = fn => { setDraft(d => { const n = deep(d); fn(n); return n }); setDirty(true) };
   const onChange = (p, v) => mut(d => setP(d, p, v));
   const onClear = p => { mut(d => setP(d, p, "")); setVer(v => v + 1) };
   const onDel = (p, i) => { mut(d => getP(d, p).splice(i, 1)); setVer(v => v + 1) };
   const onAdd = p => { mut(d => { const arr = getP(d, p); const tpl = arr[arr.length - 1] || getP(DEFAULT, p)[0] || {}; arr.push(Object.fromEntries(Object.entries(tpl).map(([k, v]) => [k, typeof v === "number" ? 0 : Array.isArray(v) ? [] : ""]))) }); setVer(v => v + 1) };
-  const onUpload = async (p, file) => { if (file.size > 4 * 1024 * 1024) { setMsg("File too large for browser storage (max 4 MB). Use a smaller file."); return }
-    try { const r = await assets.upload(file); mut(d => setP(d, p, r.url)); setVer(v => v + 1); setMsg("Uploaded. Press Save to publish it.") } catch { setMsg("Upload failed.") } };
+  const onUpload = async (p, file) => { if (file.size > assets.maxBytes) { setMsg(`File too large (max ${assets.maxBytes / 1048576} MB). Use a smaller file.`); return }
+    setMsg("Uploading…"); try { const r = await assets.upload(file); mut(d => setP(d, p, r.url)); setVer(v => v + 1); setMsg("Uploaded. Press Save to publish it.") } catch { setMsg("Upload failed.") } };
   const save = async () => { const d = deep(draft); if (pw) d.auth.passwordHash = await sha256(pw); if (pin) d.auth.pinHash = await sha256(pin);
-    try { db.set("content/site", d); setDraft(d); setDirty(false); setPw(""); setPin(""); setMsg("Saved. The site now shows these changes."); onSaved(d) } catch { setMsg("Save failed — browser storage may be full. Remove a large upload and try again.") } };
+    try { if (pw) await adminAuth.changePassword(pw); await db.set("content/site", d); setDraft(d); setDirty(false); setPw(""); setPin(""); setMsg("Saved. The site now shows these changes."); onSaved(d) }
+    catch (e) { console.error(e); setMsg(usingFirebase ? (e?.code === "auth/requires-recent-login" ? "Sign in again to change the password." : "Save failed: " + (e?.code || e?.message || "unknown error")) : "Save failed — browser storage may be full. Remove a large upload and try again.") } };
   const {auth, ...editable} = draft;
   return <div className="wrap admin"><span className="mono">Vaishnav Dhole</span><h1 className="ah">Admin panel</h1>
     <div className="acols">

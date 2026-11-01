@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // CHANGE THIS to the same email as VITE_ADMIN_EMAIL.
+    function isAdmin() { return request.auth != null && request.auth.token.email == "admin@example.com"; }
+
+    // Site content: everyone reads, only admin writes.
+    match /content/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Enquiries: anyone can submit (validated), only admin reads.
+    match /enquiries/{id} {
+      allow create: if request.resource.data.keys().hasOnly(["name", "reach", "message", "at"])
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() < 200
+        && request.resource.data.reach is string && request.resource.data.reach.size() < 300
+        && request.resource.data.message is string && request.resource.data.message.size() < 5000
+        && request.resource.data.at is string;
+      allow read, update, delete: if isAdmin();
+    }
+  }
+}
