@@ -18,7 +18,7 @@ const cfg = {
   appId: env.VITE_FIREBASE_APP_ID || "1:908018303829:web:5ca13a033d5c37fc8965dc"
 };
 export const usingFirebase = Boolean(cfg.apiKey && cfg.projectId);
-const ADMIN_EMAIL = env.VITE_ADMIN_EMAIL;
+const ADMIN_EMAIL = env.VITE_ADMIN_EMAIL || "rajputviraj0103@gmail.com";
 
 let fs, st, au;
 if (usingFirebase) { const app = initializeApp(cfg); fs = getFirestore(app); st = getStorage(app); au = getAuth(app) }

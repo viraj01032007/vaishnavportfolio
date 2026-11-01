@@ -1,8 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // CHANGE THIS to the same email as VITE_ADMIN_EMAIL.
-    function isAdmin() { return request.auth != null && request.auth.token.email == "admin@example.com"; }
+    // Admin email (must match the Firebase Auth user).
+    function isAdmin() { return request.auth != null && request.auth.token.email == "rajputviraj0103@gmail.com"; }
 
     // Site content: everyone reads, only admin writes.
     match /content/{doc} {
