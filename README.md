@@ -58,13 +58,14 @@ Storage layout in the Blob store: `content/` (site content), `enquiries/`, `uplo
 password + PIN hashes — never sent to the browser).
 
 ### One-time setup on Vercel
-1. Vercel dashboard → this project → **Storage** → **Create Database** → **Blob** → create it and **connect it to this
-   project** (all environments). This adds `BLOB_READ_WRITE_TOKEN` automatically.
+1. Vercel dashboard → this project → **Storage** → **Create Database** → **Blob**. Choose region **Mumbai (bom1)** and
+   access **Public** (visitors must be able to load the photos/videos), leave the env-variable prefix empty, and connect
+   it to this project. This adds `BLOB_STORE_ID` automatically (older stores use `BLOB_READ_WRITE_TOKEN`; both work).
 2. **Deployments** → latest → **Redeploy** (env vars only apply to new deployments).
 3. Open `/#/admin`, sign in with `Vaishnav@2026` / `1234`, then set a new password and PIN and press **Save changes**.
 
 Optional env vars (Settings → Environment Variables): `ADMIN_PASSWORD` / `ADMIN_PIN` (starting credentials before
-you change them in the panel), `SESSION_SECRET` (session signing key; defaults to one derived from the Blob token).
+you change them in the panel), `SESSION_SECRET` (session signing key; defaults to a random secret kept in the Blob store).
 
 ### Local development
 - `npm run dev` — front end only; saves go to this browser's localStorage.

@@ -9,8 +9,9 @@ export const json = (data, status = 200) =>
 
 export const fail = (msg, status = 400) => json({error: msg}, status);
 
+// New stores connect with BLOB_STORE_ID (OIDC, short-lived credentials); older ones with BLOB_READ_WRITE_TOKEN.
 export function storageReady() {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+  return Boolean(process.env.BLOB_STORE_ID || process.env.BLOB_READ_WRITE_TOKEN);
 }
 
 // All blobs under a prefix, newest first.
@@ -53,13 +54,15 @@ export async function body(request, maxBytes = 2_000_000) {
 }
 
 // ---------- admin auth ----------
-// Credentials live in the newest "auth/" blob as salted scrypt hashes. Until the admin changes them,
-// the defaults are ADMIN_PASSWORD / ADMIN_PIN env vars, or the original Vaishnav@2026 / 1234.
+// The newest "auth/" blob holds salted scrypt hashes of the password and PIN, a version id, and a random
+// session-signing secret. It is created on first use with ADMIN_PASSWORD / ADMIN_PIN, or Vaishnav@2026 / 1234.
 const DEFAULTS = () => ({password: process.env.ADMIN_PASSWORD || "Vaishnav@2026", pin: process.env.ADMIN_PIN || "1234"});
 const scrypt = (value, salt) => crypto.scryptSync(String(value), salt, 32).toString("hex");
 const same = (a, b) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && crypto.timingSafeEqual(x, y) };
 
-export const getAuth = () => newest("auth/");
+export async function getAuth() {
+  return (await newest("auth/")) || saveAuth({}, null);
+}
 
 export function check(kind, value, auth) {
   if (typeof value !== "string" || !value) return false;
@@ -72,6 +75,7 @@ export async function saveAuth({password, pin}, current) {
   const d = DEFAULTS();
   const next = {
     v: crypto.randomBytes(8).toString("hex"),
+    secret: current?.secret || crypto.randomBytes(32).toString("hex"),
     password: password ? make(password) : current?.password || make(d.password),
     pin: pin ? make(pin) : current?.pin || make(d.pin)
   };
@@ -81,24 +85,22 @@ export async function saveAuth({password, pin}, current) {
 }
 
 // Session tokens: "<expiry>.<authVersion>.<hmac>". Changing the password/PIN invalidates old tokens.
-const SECRET = () => process.env.SESSION_SECRET || process.env.BLOB_READ_WRITE_TOKEN || "";
-const sign = payload => crypto.createHmac("sha256", SECRET()).update(payload).digest("base64url");
+const sign = (payload, auth) => crypto.createHmac("sha256", process.env.SESSION_SECRET || auth.secret).update(payload).digest("base64url");
 const TTL = 12 * 60 * 60 * 1000;
 
 export function issueToken(auth) {
-  const payload = `${Date.now() + TTL}.${auth?.v || "default"}`;
-  return `${payload}.${sign(payload)}`;
+  const payload = `${Date.now() + TTL}.${auth.v}`;
+  return `${payload}.${sign(payload, auth)}`;
 }
 
 export async function verifyToken(token) {
-  if (!SECRET() || typeof token !== "string") return null;
+  if (typeof token !== "string" || !token) return null;
   const i = token.lastIndexOf("."); if (i < 0) return null;
   const payload = token.slice(0, i), sig = token.slice(i + 1);
-  if (!same(sig, sign(payload))) return null;
   const [exp, ver] = payload.split(".");
   if (!(Number(exp) > Date.now())) return null;
   const auth = await getAuth();
-  return ver === (auth?.v || "default") ? {auth} : null;
+  return ver === auth.v && same(sig, sign(payload, auth)) ? {auth} : null;
 }
 
 export async function requireAdmin(request) {
@@ -108,7 +110,7 @@ export async function requireAdmin(request) {
 
 // Wrap a handler: storage check + error → JSON.
 export const route = fn => async request => {
-  if (!storageReady()) return fail("Storage is not connected. In Vercel: Storage → Create → Blob → connect it to this project, then redeploy.", 503);
+  if (!storageReady()) return fail("Storage is not connected. In Vercel: Storage → Create → Blob (Public) → connect it to this project, then redeploy.", 503);
   try { return await fn(request) }
   catch (e) { console.error(e); return fail(e.status ? e.message : "Server error", e.status || 500) }
 };

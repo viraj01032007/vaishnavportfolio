@@ -2,7 +2,7 @@
 // • Deployed on Vercel: talks to the /api routes (Vercel Blob storage). Changes are permanent and every visitor sees them.
 // • Plain `npm run dev` (no /api available): falls back to this browser's localStorage, handy for local design work.
 //   Use `vercel dev` to run the real backend locally.
-import {upload} from "@vercel/blob/client";
+import {uploadPresigned} from "@vercel/blob/client";
 
 // ---------- mode detection ----------
 let probe;
@@ -84,7 +84,7 @@ export const assets = {
     const {mode} = await detect();
     if (mode === "api") {
       const name = file.name.replace(/[^\w.-]/g, "_").slice(-80) || "file";
-      const b = await upload(`uploads/${name}`, file, {access: "public", handleUploadUrl: "/api/upload", clientPayload: token(), multipart: file.size > 8 * 1024 * 1024});
+      const b = await uploadPresigned(`uploads/${name}`, file, {access: "public", handleUploadUrl: "/api/upload", clientPayload: token()});
       return {id: b.pathname, url: b.url};
     }
     return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res({id: r.result, url: r.result}); r.onerror = rej; r.readAsDataURL(file) });
