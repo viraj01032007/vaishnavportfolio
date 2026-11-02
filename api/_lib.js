@@ -108,9 +108,19 @@ export async function requireAdmin(request) {
   return verifyToken(h.startsWith("Bearer ") ? h.slice(7) : "");
 }
 
-// Wrap a handler: storage check + error → JSON.
+// Names (never values) of storage-related env vars this deployment can see — shown in errors to help setup.
+const seen = () => Object.keys(process.env).filter(k => /BLOB|STORE|OIDC/i.test(k)).sort();
+
+// Wrap a handler: errors → JSON. We don't pre-check env var names: the Blob SDK finds its own credentials
+// (OIDC + store id, or a read-write token), so we just try and report what went wrong.
 export const route = fn => async request => {
-  if (!storageReady()) return fail("Storage is not connected. In Vercel: Storage → Create → Blob (Public) → connect it to this project, then redeploy.", 503);
   try { return await fn(request) }
-  catch (e) { console.error(e); return fail(e.status ? e.message : "Server error", e.status || 500) }
+  catch (e) {
+    console.error(e);
+    if (e.status) return fail(e.message, e.status);
+    const msg = String(e?.message || e);
+    if (/credential|token|store|unauthori|forbidden|access denied/i.test(msg))
+      return json({error: "Storage is not connected: " + msg, hint: "Vercel → Storage → your Blob store (Public) → Projects → connect this project with Production ticked, then redeploy.", storageEnvVarsSeen: seen()}, 503);
+    return json({error: "Server error: " + msg, storageEnvVarsSeen: seen()}, 500);
+  }
 };
