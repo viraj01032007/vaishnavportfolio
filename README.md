@@ -25,8 +25,9 @@ Upload the `dist/` folder to any static host (Vercel, Netlify, GitHub Pages, cPa
 | `/#/admin` | Admin panel |
 
 ## Admin
-Footer → **Admin**. Password `Vaishnav@2026`, PIN `1234` — change both inside the panel.
-Edit every word, number and list; upload photos / episode videos; add or remove brands, people, episodes, featured cards, testimonials, journey entries; see enquiries.
+Footer → **Admin** (or `/#/admin`). Starting password `Vaishnav@2026`, PIN `1234` — change both inside the panel.
+Edit every word, number and list; upload photos / episode videos (up to 50 MB); add or remove brands, people, episodes,
+featured cards, testimonials, journey entries; read and delete enquiries.
 
 ## Files
 | File | What |
@@ -36,40 +37,36 @@ Edit every word, number and list; upload photos / episode videos; add or remove 
 | `src/pages/*.jsx` | One file per page |
 | `src/lib.jsx` | Marquee, strip, tiles, reveal, count-up helpers |
 | `src/Admin.jsx` | Login + editor + enquiries |
-| `src/store.js` | Storage layer (see below) |
+| `src/store.js` | Browser side of the storage layer |
+| `api/*.js` | Backend (Vercel serverless functions) |
 | `src/base.css`, `src/site.css` | Styling (colours in `:root`, dark mode included) |
 
-## Firebase (shared storage across all devices)
-`src/store.js` uses Firebase when `.env` has the config; otherwise it falls back to this browser's localStorage.
+## Backend (Vercel functions + Vercel Blob)
+Everything saved in the admin panel is stored permanently on the server and shown to every visitor.
 
-| Data | Where |
-|---|---|
-| Site content (admin edits) | Firestore doc `content/site` (live-updates every visitor) |
-| Enquiries | Firestore collection `enquiries` |
-| Photo / video uploads | Firebase Storage `uploads/` |
-| Admin login | Firebase Auth (email + password), then the PIN |
+| Route | What | Who |
+|---|---|---|
+| `GET /api/content` | Saved site content | Anyone |
+| `PUT /api/content` | Save site content (last 20 versions kept) | Admin |
+| `POST /api/login` | Check password, then password + PIN → 12-hour session | Anyone |
+| `POST /api/credentials` | Change password / PIN (signs out other sessions) | Admin |
+| `POST /api/enquiries` | Submit the contact form (with spam honeypot) | Anyone |
+| `GET`/`DELETE /api/enquiries` | Read / delete enquiries | Admin |
+| `POST /api/upload` | Token for direct photo/video upload to Blob | Admin |
 
-### Setup (one time)
-1. https://console.firebase.google.com → **Add project**.
-2. **Build → Firestore Database → Create database** (production mode).
-3. **Build → Storage → Get started** (Storage needs the Blaze pay-as-you-go plan; the free quota covers a portfolio).
-4. **Build → Authentication → Get started → Email/Password → Enable**. Then **Users → Add user** with your admin email and the password you want.
-5. **Project settings → Your apps → Web (</>)** → register app → copy the config.
-6. `cp .env.example .env` and paste the values; set `VITE_ADMIN_EMAIL` to the user from step 4.
-7. In `firestore.rules` and `storage.rules`, replace `admin@example.com` with that same email.
-8. Deploy the rules:
-   ```
-   npm i -g firebase-tools
-   firebase login
-   firebase use --add        # pick your project
-   firebase deploy --only firestore:rules,storage
-   ```
-9. `npm run dev`, go to `/#/admin`, sign in with the Firebase password + PIN `1234`, press **Save** once to create `content/site`.
+Storage layout in the Blob store: `content/` (site content), `enquiries/`, `uploads/` (media), `auth/` (salted scrypt
+password + PIN hashes — never sent to the browser).
 
-### Hosting
-- **Vercel / Netlify**: add the same `VITE_*` variables in the project's Environment Variables, then redeploy.
-- **Firebase Hosting**: `npm run build && firebase deploy --only hosting`.
+### One-time setup on Vercel
+1. Vercel dashboard → this project → **Storage** → **Create Database** → **Blob** → create it and **connect it to this
+   project** (all environments). This adds `BLOB_READ_WRITE_TOKEN` automatically.
+2. **Deployments** → latest → **Redeploy** (env vars only apply to new deployments).
+3. Open `/#/admin`, sign in with `Vaishnav@2026` / `1234`, then set a new password and PIN and press **Save changes**.
 
-The `VITE_FIREBASE_*` values are public by design; the security rules are what protect the data
-(anyone can read content and submit enquiries; only the admin email can edit, upload, or read enquiries).
-Changing the password in the admin panel updates the Firebase password too.
+Optional env vars (Settings → Environment Variables): `ADMIN_PASSWORD` / `ADMIN_PIN` (starting credentials before
+you change them in the panel), `SESSION_SECRET` (session signing key; defaults to one derived from the Blob token).
+
+### Local development
+- `npm run dev` — front end only; saves go to this browser's localStorage.
+- `npm run dev:full` — runs the real backend locally via the Vercel CLI (`npm i -g vercel`, `vercel link`,
+  `vercel env pull`).

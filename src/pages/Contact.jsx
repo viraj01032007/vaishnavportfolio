@@ -7,7 +7,7 @@ function Copy({id, text}) { const [ok, setOk] = useState(false);
 export default function Contact({c}) {
   const [state, setState] = useState({});
   const submit = async e => { e.preventDefault(); const f = new FormData(e.target);
-    const item = {name: f.get("name"), reach: f.get("reach"), message: f.get("msg"), at: new Date().toISOString()};
+    const item = {name: f.get("name"), reach: f.get("reach"), message: f.get("msg"), website: f.get("website") || ""};
     setState({busy: true}); try { await enquiries.add(item); setState({sent: item.name}) }
     catch (err) { console.error(err); setState({fail: "Could not send from here. Please email or call the number alongside."}) } };
   return <section className="dark contact" id="contact"><div className="wrap">
@@ -20,6 +20,7 @@ export default function Contact({c}) {
       <p className="mono">{c.contact.based}</p></div>
       <div>{state.sent ? <div className="ok" role="status">Thanks, {state.sent}. Your enquiry has reached {c.hero.name1}.</div> :
         <form onSubmit={submit}><span className="mono" style={{color: "var(--accent)"}}>Enquiry</span>
+          <input name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{position: "absolute", left: "-9999px", width: 1, height: 1, opacity: 0}}/>
           <label htmlFor="n">Your name</label><input id="n" name="name" required autoComplete="name"/>
           <label htmlFor="e">Email or phone</label><input id="e" name="reach" required autoComplete="email"/>
           <label htmlFor="m">What do you need?</label><textarea id="m" name="msg" rows={4} placeholder="Podcast, shoot, channel, dates…"/>
